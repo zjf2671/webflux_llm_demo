@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>交互式流式聊天</title>
+    <!-- 使用 unpkg CDN -->
+    <script src="https://unpkg.com/marked@4.3.0/marked.min.js"></script>
+    
+    <!-- 或者使用 jsDelivr CDN -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script> -->
+    <style>
+        /* 确保整个页面和 body 都占满视口高度 */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* 防止出现双滚动条 */
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 聊天容器自适应样式 */
+        .chat-container {
+            max-width: 90%;
+            width: 1200px;
+            margin: 10px auto; /* 减小外边距 */
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            height: calc(100vh - 20px); /* 减去上下margin */
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box; /* 确保padding不会增加实际高度 */
+        }
+        
+        #chatMessages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #eee;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 8px 12px;
+            border-radius: 15px;
+            max-width: 80%; /* 调整消息最大宽度 */
+            word-wrap: break-word; /* 确保长文本换行 */
+        }
+
+        .user-message {
+            background: #e3f2fd;
+            margin-left: auto;
+        }
+
+        .bot-message {
+            background: #f5f5f5;
+            margin-right: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .bot-content {
+            font-size: 15px;
+            color: #333;
+            padding: 8px 12px;
+            min-height: 1em;
+            line-height: 1.5;
+        }
+
+        /* 推理内容样式 */
+        .reasoning-section {
+            order: -1;
+            margin-bottom: 10px;
+        }
+
+        .collapsible {
+            cursor: pointer;
+            color: #666;
+            font-size: 14px;
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #f8f8f8;
+            margin-bottom: 5px;
+            position: relative;
+        }
+
+        .collapsible::after {
+            content: "▼";
+            position: absolute;
+            right: 12px;
+            transition: transform 0.3s;
+        }
+
+        .collapsible.active::after {
+            transform: rotate(180deg);
+        }
+
+        .reasoning-content {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            background-color: #f5f5f5;
+            border-left: 3px solid #007bff;
+            padding: 10px;
+            margin: 10px 0;
+            color: #555;
+            white-space: pre-wrap;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            opacity: 1;
+            will-change: max-height, opacity;
+        }
+        
+        .reasoning-content.collapsing {
+            opacity: 0;
+        }
+
+        /* 正文内容样式 */
+        .main-content {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+        }
+
+        /* 输入区域自适应样式 */
+        #inputArea {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px 0;
+        }
+        
+        .input-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .message-input-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .message-input {
+            flex: 1;
+            min-height: 60px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        
+        #sendBtn {
+            align-self: flex-end;
+            height: 40px;
+        }
+
+        .model-select {
+            width: 120px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+        }
+
+        /* 光标动画 */
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        .typing-cursor::after {
+            content: "|";
+            animation: blink 1s step-end infinite;
+            color: #666;
+        }
+
+        /* 响应式设计调整 */
+        @media screen and (max-width: 768px) {
+            .chat-container {
+                max-width: 98%; /* 增加宽度利用率 */
+                margin: 5px auto;
+                padding: 10px;
+                height: calc(100vh - 10px);
+            }
+
+            #chatMessages {
+                margin-bottom: 10px;
+            }
+        }
+
+        @media screen and (max-width: 480px) {
+            .chat-container {
+                max-width: 100%;
+                margin: 0;
+                padding: 5px;
+                height: 100vh;
+                border-radius: 0;
+            }
+        }
+
+        /* Markdown 内容样式 */
+        .markdown-content {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.5;
+        }
+        
+        .markdown-content h1, 
+        .markdown-content h2, 
+        .markdown-content h3, 
+        .markdown-content h4, 
+        .markdown-content h5, 
+        .markdown-content h6 {
+            margin-top: 16px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .markdown-content p {
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+
+        .markdown-content ul,
+        .markdown-content ol {
+            margin-top: 8px;
+            margin-bottom: 8px;
+            padding-left: 20px;
+        }
+
+        .markdown-content li {
+            margin-bottom: 4px;
+        }
+
+        .markdown-content pre {
+            margin: 10px 0;
+        }
+
+        .markdown-content code {
+            padding: 0.2em 0.4em;
+            margin: 0;
+            font-size: 85%;
+            background-color: rgba(27,31,35,0.05);
+            border-radius: 3px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        }
+
+        .markdown-content pre code {
+            padding: 12px;
+            display: block;
+            overflow-x: auto;
+            background-color: #f6f8fa;
+        }
+
+        .markdown-content blockquote {
+            padding: 0 0.8em;
+            color: #6a737d;
+            border-left: 0.25em solid #dfe2e5;
+            margin: 8px 0;
+        }
+
+        /* 发送按钮样式 */
+        #sendBtn {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        /* 停止按钮样式 */
+        #sendBtn.stop-button {
+            background: #dc3545;
+        }
+
+        #sendBtn:hover {
+            opacity: 0.9;
+        }
+
+        /* 开关按钮样式 */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            margin-right: 10px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 20px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #2196F3;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        
+        .toggle-label {
+            margin-left: 5px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        /* 会话ID输入框样式 */
+        .session-id-input {
+            width: 100px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body style="white-space: pre-line;">
+    <div class="chat-container">
+        <div id="chatMessages"></div>
+        <div id="inputArea">
+            <div class="input-controls">
+                <select class="model-select" id="modelSelect">
+                    <option value="gpt-4">GPT-4</option>
+                    <option value="gpt-3.5">GPT-3.5</option>
+                    <option value="custom">自定义模型</option>
+                </select>
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="dataThinkingToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">数据思考</span>
+                </div>
+                <input type="text" id="sessionIdInput" placeholder="会话ID" value="454333" class="session-id-input" />
+                <input type="text" id="userIdInput" placeholder="用户ID" value="1408351927917510656" class="session-id-input" />
+            </div>
+            <div class="message-input-container">
+                <textarea id="userInput" placeholder="输入消息..." class="message-input"></textarea>
+                <button onclick="sendMessage()" id="sendBtn">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reasoning" class="reasoning-content" style="display: none;"></div>
+    <div id="content" class="main-content"></div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const modelSelect = document.getElementById('modelSelect');
+        
+        let processingQueue = Promise.resolve();
+        let lastEventId = 0;
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        async function processEvent(event, {
+            botContent,
+            reasoningContent,
+            collapsible,
+            contentBuffer,
+            reasoningBuffer,
+            reasoningStarted,
+            reasoningTitle,
+            dataSection,
+            dataContent,
+            dataCollapsible,
+            dataBuffer,
+            dataStarted,
+            dataTitle
+        }) {
+            return new Promise((resolve) => {
+                setTimeout(async () => {
+                    try {
+                        const dataPrefix = 'data:';
+                        if (event.startsWith(dataPrefix)) {
+                            // 处理 [DONE] 消息
+                            if (event.includes('[DONE]')) {
+                                botContent.classList.remove('typing-cursor');
+                                // 在结束时将累积的内容转换为 Markdown
+                                botContent.innerHTML = marked.parse(contentBuffer.current);
+                                
+                                // 平滑关闭折叠面板
+                                smoothCollapsePanel(collapsible, reasoningContent);
+                                smoothCollapsePanel(dataCollapsible, dataContent);
+                                
+                                return resolve();
+                            }
+
+                            const jsonStr = event.slice(dataPrefix.length);
+                            const data = JSON.parse(jsonStr);
+                            
+                            // 处理数据思考过程
+                            if (data.type === 'data') {
+                                if (!dataStarted.current) {
+                                    dataStarted.current = true;
+                                    dataSection.style.display = 'block';
+                                    dataCollapsible.style.display = 'block';
+                                    dataCollapsible.classList.add('active');
+                                    dataContent.style.display = 'block';
+                                    dataContent.style.maxHeight = '1000px';
+                                }
+                                
+                                // 更新数据标题
+                                if (data.title) {
+                                    dataTitle.current = data.title;
+                                    dataCollapsible.textContent = dataTitle.current;
+                                }
+                                
+                                // 更新数据内容
+                                if (data.content) {
+                                    dataBuffer.current += data.content;
+                                    dataContent.innerHTML = dataBuffer.current;
+                                }
+                            }
+                            // 处理思考过程
+                            else if (data.type === 'think') {
+                                if (!reasoningStarted.current) {
+                                    reasoningStarted.current = true;
+                                    collapsible.style.display = 'block';
+                                    collapsible.classList.add('active');
+                                    reasoningContent.style.display = 'block';
+                                    reasoningContent.style.maxHeight = '1000px';
+                                }
+                                
+                                // 更新推理标题
+                                if (data.title) {
+                                    reasoningTitle.current = data.title;
+                                    collapsible.textContent = reasoningTitle.current;
+                                }
+                                
+                                // 更新推理内容
+                                if (data.content) {
+                                    reasoningBuffer.current += data.content;
+                                    reasoningContent.innerHTML = reasoningBuffer.current;
+                                }
+                            } else if (data.type === 'text') {
+                                // 更新主内容（带打字效果）
+                                if (data.content) {
+                                    contentBuffer.current += data.content;
+                                    // 在打字效果过程中显示原始文本
+                                    botContent.textContent = contentBuffer.current;
+                                    botContent.classList.add('typing-cursor');
+                                }
+                            }
+
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
+                    } catch (e) {
+                        console.error('处理事件失败:', e);
+                    }
+                    resolve();
+                }, 0);
+            });
+        }
+
+        function createMessageContainer() {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = 'message bot-message';
+            
+            // 数据思考部分
+            const dataSection = document.createElement('div');
+            dataSection.className = 'reasoning-section';
+            dataSection.style.display = 'none';
+
+            const dataCollapsible = document.createElement('div');
+            dataCollapsible.className = 'collapsible';
+            dataCollapsible.textContent = '数据整理中...';
+            dataCollapsible.style.display = 'none';
+            
+            const dataContent = document.createElement('div');
+            dataContent.className = 'reasoning-content';
+            dataContent.style.display = 'none';
+            dataContent.style.maxHeight = '0';
+            
+            // 推理部分
+            const reasoningSection = document.createElement('div');
+            reasoningSection.className = 'reasoning-section';
+
+            const collapsible = document.createElement('div');
+            collapsible.className = 'collapsible';
+            collapsible.textContent = '思考中...';
+            collapsible.style.display = 'none';
+            
+            const reasoningContent = document.createElement('div');
+            reasoningContent.className = 'reasoning-content';
+            reasoningContent.style.display = 'none';
+            reasoningContent.style.maxHeight = '0';
+
+            // 正文内容
+            const botContent = document.createElement('div');
+            botContent.className = 'bot-content typing-cursor markdown-content';
+
+            // 组装结构 - 数据部分在推理部分上方
+            dataSection.appendChild(dataCollapsible);
+            dataSection.appendChild(dataContent);
+            messageContainer.appendChild(dataSection);
+            
+            reasoningSection.appendChild(collapsible);
+            reasoningSection.appendChild(reasoningContent);
+            messageContainer.appendChild(reasoningSection);
+            
+            messageContainer.appendChild(botContent);
+
+            // 绑定折叠事件 - 数据部分
+            dataCollapsible.addEventListener('click', () => {
+                dataCollapsible.classList.toggle('active');
+                if (dataCollapsible.classList.contains('active')) {
+                    expandPanel(dataContent);
+                } else {
+                    smoothCollapsePanel(dataCollapsible, dataContent);
+                }
+            });
+
+            // 绑定折叠事件 - 推理部分
+            collapsible.addEventListener('click', () => {
+                collapsible.classList.toggle('active');
+                if (collapsible.classList.contains('active')) {
+                    expandPanel(reasoningContent);
+                } else {
+                    smoothCollapsePanel(collapsible, reasoningContent);
+                }
+            });
+
+            return { 
+                messageContainer,
+                botContent,
+                collapsible,
+                reasoningContent,
+                dataSection,
+                dataCollapsible,
+                dataContent
+            };
+        }
+
+        async function stopChat() {
+            try {
+                // 获取会话ID和用户ID
+                const chatSessionId = document.getElementById('sessionIdInput').value.trim() || '454333';
+                const userId = document.getElementById('userIdInput').value.trim() || 'testLocal';
+                
+                await fetch('http://localhost:8080/chatMsg/stopChat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-UserId': userId
+                    },
+                    body: JSON.stringify({ 
+                        chatSessionId: chatSessionId
+                    })
+                });
+                // 重置按钮状态
+                const sendBtn = document.getElementById('sendBtn');
+                sendBtn.onclick = sendMessage;
+                sendBtn.textContent = '发送';
+                sendBtn.classList.remove('stop-button');
+                
+                // 重置输入框状态
+                userInput.disabled = false;
+                userInput.focus();
+            } catch (error) {
+                console.error('停止请求失败:', error);
+            }
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            userInput.value = '';
+            userInput.disabled = true;
+            
+            // 修改发送按钮为停止按钮
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.textContent = '停止';
+            sendBtn.classList.add('stop-button');
+            sendBtn.onclick = stopChat;
+
+            // 添加用户消息
+            addMessage(message, 'user-message');
+
+            try {
+                const selectedModel = modelSelect.value;
+                // 获取数据思考开关状态
+                const dataThinkingEnabled = document.getElementById('dataThinkingToggle').checked;
+                // 获取会话ID和用户ID
+                const chatSessionId = document.getElementById('sessionIdInput').value.trim() || '454333';
+                const userId = document.getElementById('userIdInput').value.trim() || 'testLocal';
+                
+                const response = await fetch('http://localhost:8080/chatMsg/baseChat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream',
+                        'X-UserId': userId
+                    },
+                    body: JSON.stringify({ 
+                        query: message,
+                        chatSessionId: chatSessionId,
+                        dataThinkingEnabled: dataThinkingEnabled,
+                        isTest: true,
+                        model: selectedModel
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let currentEventId = ++lastEventId;
+
+                // 创建新的消息容器
+                const { 
+                    messageContainer,
+                    botContent,
+                    collapsible,
+                    reasoningContent,
+                    dataSection,
+                    dataCollapsible,
+                    dataContent
+                } = createMessageContainer();
+                
+                chatMessages.appendChild(messageContainer);
+
+                // 创建状态对象来跟踪内容
+                const contentBuffer = { current: '' };
+                const reasoningBuffer = { current: '' };
+                const reasoningStarted = { current: false };
+                const reasoningTitle = { current: '思考中...' };
+                const dataBuffer = { current: '' };
+                const dataStarted = { current: false };
+                const dataTitle = { current: '数据整理中...' };
+
+                while (true) {
+                    if (currentEventId !== lastEventId) break;
+
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const events = buffer.split(/\n\n/);
+                    buffer = events.pop() || '';
+
+                    for (const event of events) {
+                        await processEvent(event, {
+                            botContent,
+                            reasoningContent,
+                            collapsible,
+                            contentBuffer,
+                            reasoningBuffer,
+                            reasoningStarted,
+                            reasoningTitle,
+                            dataSection,
+                            dataContent,
+                            dataCollapsible,
+                            dataBuffer,
+                            dataStarted,
+                            dataTitle
+                        });
+                    }
+                }
+
+            } catch (error) {
+                console.error('请求失败:', error);
+                addMessage('请求出错: ' + error.message, 'bot-message');
+            } finally {
+                // 恢复按钮状态
+                sendBtn.onclick = sendMessage;
+                sendBtn.textContent = '发送';
+                sendBtn.classList.remove('stop-button');
+                userInput.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        function addMessage(text, type) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = text;
+            chatMessages.appendChild(div);
+            return div;
+        }
+
+        function showReasoning() {
+            const reasoningDiv = document.getElementById('reasoning');
+            reasoningDiv.style.display = 'block';
+            reasoningDiv.innerHTML = ''; // 清空之前的内容
+            
+            // 不使用打字效果，直接显示推理过程
+            reasoningDiv.innerHTML = reasoning;
+        }
+        
+        function hideReasoning() {
+            document.getElementById('reasoning').style.display = 'none';
+        }
+
+        // 添加平滑折叠面板的函数
+        function smoothCollapsePanel(collapsible, content) {
+            if (!content) return;
+            
+            collapsible.classList.remove('active');
+            
+            // 先设置实际高度，然后过渡到0
+            const actualHeight = content.scrollHeight;
+            content.style.maxHeight = actualHeight + 'px';
+            
+            // 强制回流
+            content.offsetHeight;
+            
+            // 添加过渡中的类
+            content.classList.add('collapsing');
+            
+            // 设置为0高度
+            requestAnimationFrame(() => {
+                content.style.maxHeight = '0';
+                
+                // 过渡完成后隐藏
+                content.addEventListener('transitionend', function handler(e) {
+                    if (e.propertyName === 'max-height') {
+                        content.style.display = 'none';
+                        content.classList.remove('collapsing');
+                        content.removeEventListener('transitionend', handler);
+                    }
+                });
+            });
+        }
+
+        // 添加展开面板的函数
+        function expandPanel(content) {
+            content.style.display = 'block';
+            content.classList.remove('collapsing');
+            
+            // 使用 RAF 确保 display:block 已应用
+            requestAnimationFrame(() => {
+                // 先设置为0高度
+                content.style.maxHeight = '0';
+                
+                // 强制回流
+                content.offsetHeight;
+                
+                // 然后过渡到实际高度
+                content.style.maxHeight = content.scrollHeight + 'px';
+                
+                // 监听过渡结束，设置为 auto 以适应内容变化
+                content.addEventListener('transitionend', function handler(e) {
+                    if (e.propertyName === 'max-height') {
+                        content.style.maxHeight = 'none'; // 使用 none 而不是 auto，更好地支持动态内容
+                        content.removeEventListener('transitionend', handler);
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>

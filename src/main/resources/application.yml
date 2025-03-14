@@ -1,0 +1,7 @@
+server:
+  port: 8080
+haha:
+  chat-model:
+    baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+    modelId: deepseek-r1
+    apiKey:
