@@ -1,5 +1,5 @@
 
-**1、配置baseUrl、modelId、apikey即可使用**
+**1、src/main/resources/application.yml配置baseUrl、modelId、apikey即可使用**
 
 ![config.png](config.jpg)
 
